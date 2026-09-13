@@ -1,0 +1,15 @@
+# Bug-report / reference screenshots dropped in the project root
+*.jpg
+*.jpeg
+*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editor / OS cruft
+.DS_Store
+*.swp
