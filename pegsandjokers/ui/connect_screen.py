@@ -1,4 +1,5 @@
 """The Host/Join screen shown when the app starts."""
+import random
 import time
 
 from textual.app import ComposeResult
@@ -6,68 +7,113 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Input, RadioButton, RadioSet, Select, Static
 
+from . import colors
 from ..game.state import COLORS
 from ..net.client import ClientConnection
 from ..net.server import GameServer
 
 DEFAULT_PORT = 5555
+TITLE_TEXT = "Pegs and Jokers"
+
+
+def _random_title_markup() -> str:
+    return "".join(
+        f"[{colors.player_style(random.choice(COLORS))}]{ch}[/]" if ch != " " else " "
+        for ch in TITLE_TEXT
+    )
 
 
 class ConnectScreen(Screen):
     CSS = """
     ConnectScreen {
-        align: center bottom;
+        align: center middle;
+    }
+    #page {
+        width: auto;
+        height: auto;
     }
     #title {
-        dock: top;
         width: 100%;
         text-align: center;
+        text-style: bold;
     }
     #form {
-        width: 60;
+        width: 46;
         height: auto;
         border: round $accent;
-        padding: 1 2 0 2;
+        padding: 0 2;
     }
-    #form > Static.label {
-        margin-top: 1;
-    }
-    #form > Horizontal {
+    #form .row {
         height: auto;
-        margin-top: 1;
+        align: left middle;
+    }
+    #form .row > .label {
+        width: 9;
+        color: $text-muted;
+    }
+    #form .row > Select, #form .row > Input, #form .row > RadioSet {
+        width: 1fr;
+    }
+    #mode {
+        layout: horizontal;
     }
     #status {
-        margin-top: 1;
         color: $error;
+        height: 1;
+    }
+    #connect {
+        margin-top: 1;
+        width: 100%;
     }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("[b]Pegs and Jokers[/b]", id="title")
-        with Vertical(id="form"):
-            yield Static("[b]Host/Join Game[/b]", id="mode_title")
-            with RadioSet(id="mode"):
-                yield RadioButton("Host a new game", value=True, id="mode_host")
-                yield RadioButton("Join a game", id="mode_join")
+        with Vertical(id="page"):
+            yield Static(_random_title_markup(), id="title")
+            with Vertical(id="form"):
+                with Horizontal(classes="row"):
+                    yield Static("Mode", classes="label")
+                    with RadioSet(id="mode", compact=True):
+                        yield RadioButton("Host", value=True, id="mode_host")
+                        yield RadioButton("Join", id="mode_join")
 
-            yield Static("Number of players (host only)", classes="label")
-            yield Select(((str(n), n) for n in (2, 4, 6, 8)), value=4, id="num_players", allow_blank=False)
+                with Horizontal(classes="row", id="row_players"):
+                    yield Static("Players", classes="label")
+                    yield Select(
+                        (
+                            (f"{n} (Wonky)" if n in (6, 8) else str(n), n)
+                            for n in (2, 4, 6, 8)
+                        ),
+                        value=4,
+                        id="num_players",
+                        allow_blank=False,
+                        compact=True,
+                    )
 
-            yield Static("Server address (join only)", classes="label")
-            yield Input(value="127.0.0.1", id="address")
+                with Horizontal(classes="row", id="row_address"):
+                    yield Static("Address", classes="label")
+                    yield Input(value="127.0.0.1", id="address", compact=True)
 
-            yield Static("Port", classes="label")
-            yield Input(value=str(DEFAULT_PORT), id="port")
+                with Horizontal(classes="row"):
+                    yield Static("Port", classes="label")
+                    yield Input(value=str(DEFAULT_PORT), id="port", compact=True)
 
-            yield Static("Your name", classes="label")
-            yield Input(value="", placeholder="Player", id="name")
+                with Horizontal(classes="row"):
+                    yield Static("Name", classes="label")
+                    yield Input(value="", placeholder="Player", id="name", compact=True)
 
-            yield Static("Your color", classes="label")
-            yield Select(((c.capitalize(), c) for c in COLORS), value=COLORS[0], id="color", allow_blank=False)
+                with Horizontal(classes="row"):
+                    yield Static("Color", classes="label")
+                    yield Select(
+                        ((f"[{colors.player_style(c)}]{c.capitalize()}[/]", c) for c in COLORS),
+                        value=COLORS[0],
+                        id="color",
+                        allow_blank=False,
+                        compact=True,
+                    )
 
-            yield Static("", id="status")
-            with Horizontal():
-                yield Button("Connect", variant="primary", id="connect")
+                yield Static("", id="status")
+                yield Button("Connect", variant="primary", id="connect", compact=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -82,8 +128,8 @@ class ConnectScreen(Screen):
 
     def _update_field_visibility(self) -> None:
         hosting = self._is_hosting()
-        self.query_one("#num_players").display = hosting
-        self.query_one("#address").display = not hosting
+        self.query_one("#row_players").display = hosting
+        self.query_one("#row_address").display = not hosting
         self.query_one("#connect", Button).label = "Host" if hosting else "Connect"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
