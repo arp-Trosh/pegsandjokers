@@ -16,15 +16,24 @@ DEFAULT_PORT = 5555
 class ConnectScreen(Screen):
     CSS = """
     ConnectScreen {
-        align: center middle;
+        align: center bottom;
+    }
+    #title {
+        dock: top;
+        width: 100%;
+        text-align: center;
     }
     #form {
         width: 60;
         height: auto;
         border: round $accent;
-        padding: 1 2;
+        padding: 1 2 0 2;
     }
     #form > Static.label {
+        margin-top: 1;
+    }
+    #form > Horizontal {
+        height: auto;
         margin-top: 1;
     }
     #status {
@@ -34,8 +43,9 @@ class ConnectScreen(Screen):
     """
 
     def compose(self) -> ComposeResult:
+        yield Static("[b]Pegs and Jokers[/b]", id="title")
         with Vertical(id="form"):
-            yield Static("[b]Pegs and Jokers[/b]", id="title")
+            yield Static("[b]Host/Join Game[/b]", id="mode_title")
             with RadioSet(id="mode"):
                 yield RadioButton("Host a new game", value=True, id="mode_host")
                 yield RadioButton("Join a game", id="mode_join")
@@ -55,9 +65,9 @@ class ConnectScreen(Screen):
             yield Static("Your color", classes="label")
             yield Select(((c.capitalize(), c) for c in COLORS), value=COLORS[0], id="color", allow_blank=False)
 
+            yield Static("", id="status")
             with Horizontal():
                 yield Button("Connect", variant="primary", id="connect")
-            yield Static("", id="status")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -74,6 +84,7 @@ class ConnectScreen(Screen):
         hosting = self._is_hosting()
         self.query_one("#num_players").display = hosting
         self.query_one("#address").display = not hosting
+        self.query_one("#connect", Button).label = "Host" if hosting else "Connect"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id != "connect":
