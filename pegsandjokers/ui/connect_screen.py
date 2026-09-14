@@ -81,7 +81,12 @@ class ConnectScreen(Screen):
                     yield Static("Players", classes="label")
                     yield Select(
                         (
-                            (f"{n} (Wonky)" if n in (6, 8) else str(n), n)
+                            (
+                                f"{n} (Wonky)" if n in (6, 8) else
+                                f"{n} (without jokers)" if n == 2 else
+                                str(n),
+                                n,
+                            )
                             for n in (2, 4, 6, 8)
                         ),
                         value=4,

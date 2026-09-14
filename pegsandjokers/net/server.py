@@ -281,7 +281,8 @@ class GameServer:
         if any(self.state.team_all_safe(m) for m in members):
             self.state.phase = GameState.PHASE_FINISHED
             self.state.winner_team = self.board.team_id(conn.player_id)
-            self._broadcast({"type": "game_over", "winner_team": self.state.winner_team})
+            self._broadcast({"type": "game_over", "winner_team": self.state.winner_team,
+                              "winner_name": player.name})
             self._broadcast({"type": "system_msg", "text": f"{player.name}'s team wins!"})
         else:
             self.state.next_turn()

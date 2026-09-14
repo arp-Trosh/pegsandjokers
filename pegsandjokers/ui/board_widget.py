@@ -7,6 +7,8 @@ the rest of it, the same way any page taller than the window would. This
 is what actually solves "the board doesn't fit," instead of shrinking the
 board's own proportions to force a fit.
 """
+import random
+
 from rich.segment import Segment
 from rich.style import Style
 
@@ -16,6 +18,7 @@ from textual.message import Message
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
+from ..game.state import COLORS
 from . import colors
 
 
@@ -36,9 +39,21 @@ class BoardView(ScrollView):
         self.space_at_cell = {(r, c): space_id for space_id, (r, c) in board_layout.positions.items()}
         self._cell_render = {}
         self._key_tags = {}  # single-char -> space_id, for the keyboard fallback
+        # space_id -> style, chosen once when the game ends so the empty
+        # "." spaces light up in random player colors without re-rolling
+        # (and thus flickering) on every redraw.
+        self._win_colors = {}
 
     def update_from_controller(self, controller):
         highlight = controller.current_highlight()
+        game_over = bool(controller.state) and controller.state.get("phase") == "finished"
+        if game_over and not self._win_colors:
+            self._win_colors = {
+                space_id: colors.player_style(random.choice(COLORS))
+                for space_id in self.board_layout.positions
+            }
+        elif not game_over:
+            self._win_colors = {}
         cell_render = {}
         tags = {}
         # b/c/e/q/r/x are GameScreen-level key bindings (host begin/cancel/
@@ -54,6 +69,9 @@ class BoardView(ScrollView):
             if occ_color:
                 ch = occ_color[0].upper()
                 style = colors.player_style(occ_color)
+            elif game_over:
+                ch = "."
+                style = self._win_colors.get(space_id, colors.DIM_STYLE)
             elif space_id[0] in ("home", "safe"):
                 ch = "."
                 style = colors.HOME_SAFE_STYLE

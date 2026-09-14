@@ -65,7 +65,7 @@ class GameController:
                 self.step_index = 0
                 self.pending_from = None
         elif t == "game_over":
-            self.game_over_msg = f"GAME OVER -- team {msg['winner_team']} wins!"
+            self.game_over_msg = f"GAME OVER -- {msg['winner_name']} wins!"
         elif t == "_connection_lost":
             self.chat_log.append(("system", None, "Connection to server lost."))
         if len(self.chat_log) > 300:
