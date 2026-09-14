@@ -115,13 +115,17 @@ def compute_come_out(state, board, owner, home_peg):
             "capture": (capture.owner, capture.index) if capture else None}
 
 
-def compute_joker_swap(state, board, owner, home_peg, target_peg):
-    if home_peg.location[0] != "home" or target_peg.location[0] != "track":
+def compute_joker_swap(state, board, owner, mover_peg, target_peg):
+    """The Joker's wild swap: teleport any of `owner`'s own pegs -- whether
+    still in HOME or already out on the track -- onto any other peg
+    currently in play, sending that peg home. Not a normal step-by-step
+    move, so unlike compute_move it doesn't walk/check a path."""
+    if mover_peg.location[0] not in ("home", "track") or target_peg.location[0] != "track":
         return None
     if target_peg.owner == owner:
         return None
     dest = target_peg.location
-    return {"peg": (owner, home_peg.index), "from": home_peg.location, "to": dest,
+    return {"peg": (owner, mover_peg.index), "from": mover_peg.location, "to": dest,
             "capture": (target_peg.owner, target_peg.index)}
 
 
@@ -150,11 +154,16 @@ def legal_moves_for_card(state, board, player, card, card_index):
             r = compute_come_out(state, board, owner, hp)
             if r:
                 moves.append(_make_move(card_index, [r], "Joker: come out"))
-        for hp in home_pegs:
+        # The wild swap can use ANY of the player's own pegs as the mover --
+        # one still in HOME, or one already out on the track -- not just
+        # HOME pegs. ("Joker - a WILD CARD: replaces any other peg in play
+        # with your own peg.")
+        movers = home_pegs + [p for p in out_pegs if p.location[0] == "track"]
+        for mover in movers:
             for target in state.pegs.values():
                 if target.location[0] != "track" or target.owner == owner:
                     continue
-                r = compute_joker_swap(state, board, owner, hp, target)
+                r = compute_joker_swap(state, board, owner, mover, target)
                 if r:
                     moves.append(_make_move(card_index, [r], "Joker: wild swap"))
         return moves
@@ -272,6 +281,18 @@ def _temp_step(state, step):
 
 def any_legal_move(state, board, player):
     for idx, card in enumerate(state.players[player].hand):
+        if legal_moves_for_card(state, board, player, card, idx):
+            return True
+    return False
+
+
+def any_forced_legal_move(state, board, player):
+    """Like any_legal_move, but ignoring the Joker: the Joker is always
+    optional to play, even when it's the only card in hand with a legal
+    move, so it must never by itself force a player out of discarding."""
+    for idx, card in enumerate(state.players[player].hand):
+        if card.is_joker:
+            continue
         if legal_moves_for_card(state, board, player, card, idx):
             return True
     return False

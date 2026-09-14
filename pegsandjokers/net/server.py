@@ -194,8 +194,8 @@ class GameServer:
         if conn.player_id is None:
             return
         player = self.state.players[conn.player_id]
-        # Defensive backstop only -- the TUI client already caps typed
-        # messages at CHAT_MAX_LEN (ui/tui.py) before ever sending one.
+        # Defensive backstop only -- the client already caps typed
+        # messages at CHAT_MAX_LEN (ui/game_screen.py) before ever sending one.
         text = str(msg.get("text", ""))[:300]
         if not text:
             return
@@ -291,7 +291,7 @@ class GameServer:
         if not self._require_turn(conn):
             return
         player = self.state.players[conn.player_id]
-        if rules.any_legal_move(self.state, self.board, conn.player_id):
+        if rules.any_forced_legal_move(self.state, self.board, conn.player_id):
             self._send_system(conn.player_id, "You have a legal move and must play it.")
             return
         idx = msg.get("card_index")

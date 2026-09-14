@@ -44,7 +44,9 @@ RULES_LINES = [
     "than the SAFE area allows, you cannot enter the SAFE area and must "
     "go past it. An 8 or 9 can potentially move you back so you don't "
     "have to go all the way around again.",
-    "- You must move if you have a play.",
+    "- You must move if you have a play. The Joker is the one exception: "
+    "you never have to play it, even if it's the only card in your hand "
+    "with a legal move.",
     "- You must use the full count of the card played; i.e. a 4 card "
     "requires four moves, even into the SAFE position.",
     "- Each player must play his own pegs until all five pegs are in "

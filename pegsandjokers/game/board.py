@@ -208,9 +208,30 @@ class Layout:
                 continue
             player = self.board.player_at_seat(seat)
 
+            # A perp push of the same abstract magnitude reads as much
+            # closer to the track for a diagonal arm than for an
+            # axis-aligned one: on an axis-aligned rectangle arm, HOME/SAFE
+            # sit purely to one side of the track (a clean 90-degree
+            # offset), but on a hexagon/octagon's diagonal arms the
+            # "outward" direction is itself at a diagonal angle, so the
+            # cluster's dots visually read as just more steps along the
+            # same diagonal trend as the track -- they blend into it as
+            # clumps instead of standing apart from it. Boosting the perp
+            # distance in inverse proportion to how diagonal the arm is
+            # compensates for that, while leaving perfectly axis-aligned
+            # arms (out_x or out_y == 0, diag_factor == 1) untouched. The
+            # extra factor of 2 is empirical: measuring the actual nearest
+            # home-dot-to-track-hole grid distance showed a plain 1/x
+            # boost barely moved the rounded result at all (rounding to
+            # character cells swallowed the small correction), while 2/x
+            # reliably opened up a clearly-separated gap.
+            diag_factor = max(abs(out_x), abs(out_y)) or 1.0
+            perp_boost = 1.0 + 4.0 * (1.0 - diag_factor)
+
             def _place(cluster, anchor_xy, offsets):
                 ax, ay = anchor_xy
                 for i, (along, perp) in enumerate(offsets):
+                    perp *= perp_boost
                     x = ax + along * hole_spacing * along_x + perp * hole_spacing * out_x
                     y = ay + along * hole_spacing * along_y + perp * hole_spacing * out_y
                     self.positions[(cluster, player, i)] = self._to_grid(x, y)
