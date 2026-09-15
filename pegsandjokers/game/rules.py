@@ -14,10 +14,10 @@ TEAM_PARTNER = "partner"
 TEAM_OPPONENT = "opponent"
 
 
-def _relationship(state, board, mover, other_owner):
+def _relationship(state, mover, other_owner):
     if other_owner == mover:
         return "self"
-    if board.teammate(mover) == other_owner:
+    if state.teammate(mover) == other_owner:
         return TEAM_PARTNER
     return TEAM_OPPONENT
 
@@ -82,7 +82,7 @@ def _simulate(state, board, mover, path):
         occ = _occupant_at(state, loc)
         if occ is None:
             continue
-        rel = _relationship(state, board, mover, occ.owner)
+        rel = _relationship(state, mover, occ.owner)
         if rel == "self":
             return False, None, None
         if i == len(path) - 1:
@@ -139,7 +139,7 @@ def controlled_owner(state, board, player):
     rules let them use their cards to move their teammate's pegs instead."""
     if any(p.location[0] != "safe" for p in state.pegs_of(player)):
         return player
-    mate = board.teammate(player)
+    mate = state.teammate(player)
     return mate if mate is not None else player
 
 
@@ -309,7 +309,7 @@ def apply_move(state, board, move):
         if step["capture"]:
             c_owner, c_idx = step["capture"]
             cap_peg = state.pegs[(c_owner, c_idx)]
-            rel = _relationship(state, board, owner, c_owner)
+            rel = _relationship(state, owner, c_owner)
             if rel == TEAM_PARTNER:
                 cap_peg.location = _partner_in_spot_location(board, c_owner)
                 messages.append(f"{state.players[owner].name}'s peg sends teammate to their IN SPOT.")

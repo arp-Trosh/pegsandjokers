@@ -26,6 +26,7 @@ class GameController:
         self.state = None
         self.chat_log = []  # (kind, color, text)
         self.game_over_msg = None
+        self.seating_changed = False
 
         self.card_idx = None
         self.candidates = []
@@ -55,6 +56,10 @@ class GameController:
             self.is_host = msg["is_host"]
         elif t == "state":
             self.state = msg["state"]
+            seats = self.state.get("seat_of_player")
+            if seats is not None and seats != self.board.seat_of_player:
+                self.board.reseat(seats)
+                self.seating_changed = True
         elif t == "chat":
             self.chat_log.append(("chat", msg["color"], f"{msg['name']}: {msg['text']}"))
         elif t == "system_msg":
@@ -70,6 +75,12 @@ class GameController:
             self.chat_log.append(("system", None, "Connection to server lost."))
         if len(self.chat_log) > 300:
             self.chat_log = self.chat_log[-300:]
+
+    def consume_seating_changed(self):
+        """True at most once per reseat -- callers use this to know when
+        the board's Layout needs rebuilding from scratch."""
+        changed, self.seating_changed = self.seating_changed, False
+        return changed
 
     # -- chat / commands -------------------------------------------------
     def send_chat_or_command(self, text):
@@ -98,6 +109,11 @@ class GameController:
 
     def host_end(self):
         self.conn.send({"type": "host_control", "action": "end"})
+
+    # -- lobby team selection ------------------------------------------------
+    def cycle_team(self):
+        if self.state and self.state.get("phase") == "lobby":
+            self.conn.send({"type": "cycle_team"})
 
     # -- turn / hand helpers -------------------------------------------------
     def my_turn(self):

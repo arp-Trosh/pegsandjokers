@@ -35,6 +35,9 @@ class GameScreen(Screen):
     #board.status-ended {
         border: round yellow;
     }
+    #board.status-error {
+        border: round red;
+    }
     #lower {
         height: 12;
     }
@@ -51,10 +54,19 @@ class GameScreen(Screen):
         border: none;
         padding: 0 1;
     }
-    #players_panel {
+    #players_col {
         width: 1fr;
         height: 100%;
         border: round $accent;
+        padding: 0 1;
+    }
+    #players_panel {
+        height: 1fr;
+    }
+    #change-team-btn {
+        height: 1;
+        min-width: 3;
+        border: none;
         padding: 0 1;
     }
     #hand_row {
@@ -81,6 +93,7 @@ class GameScreen(Screen):
         Binding("5", "pick_card(4)", "Card 5", show=False),
         Binding("c", "cancel", "Cancel"),
         Binding("x", "discard", "Discard"),
+        Binding("t", "change_team", "Change Team"),
         Binding("b", "host_begin", "Begin (host)"),
         Binding("r", "host_restart", "Restart (host)"),
         Binding("e", "host_end", "End (host)"),
@@ -109,7 +122,9 @@ class GameScreen(Screen):
                 yield RichLog(id="chat_log", markup=True, wrap=True)
                 yield Input(placeholder="Type a message, or /rules  (Enter to send)",
                             id="chat_input", max_length=CHAT_MAX_LEN)
-            yield Static(id="players_panel")
+            with Vertical(id="players_col"):
+                yield Static(id="players_panel")
+                yield Button("Change Team (t)", id="change-team-btn")
         with Horizontal(id="hand_row"):
             pass
 
@@ -124,7 +139,11 @@ class GameScreen(Screen):
 
     async def refresh_all(self) -> None:
         self._refresh_status()
-        self.query_one(BoardView).update_from_controller(self.controller)
+        board_view = self.query_one(BoardView)
+        if self.controller.consume_seating_changed():
+            self.board_layout = Layout(self.controller.board)
+            board_view.set_layout(self.board_layout)
+        board_view.update_from_controller(self.controller)
         self._refresh_chat()
         self._refresh_players()
         await self._refresh_hand()
@@ -137,10 +156,11 @@ class GameScreen(Screen):
         c = self.controller
         board = self.query_one(BoardView)
 
-        def set_status(text, *, yourturn=False, ended=False):
+        def set_status(text, *, yourturn=False, ended=False, error=False):
             board.border_title = text
             board.set_class(yourturn, "status-yourturn")
             board.set_class(ended, "status-ended")
+            board.set_class(error, "status-error")
 
         if c.game_over_msg:
             set_status(c.game_over_msg, yourturn=True)
@@ -154,7 +174,10 @@ class GameScreen(Screen):
             msg = f"LOBBY: {n}/{c.num_players} players joined."
             if c.is_host:
                 msg += "  Press 'b' to begin" if n >= c.num_players else "  (waiting for players)"
-            set_status(msg)
+            error = c.state.get("lobby_error")
+            if error:
+                msg = f"{error}  ({msg})"
+            set_status(msg, error=bool(error))
             return
         if phase == "finished":
             msg = "GAME ENDED by host." + ("  press 'r' to restart" if c.is_host else "")
@@ -187,21 +210,30 @@ class GameScreen(Screen):
     def _refresh_players(self) -> None:
         c = self.controller
         panel = self.query_one("#players_panel", Static)
+        team_btn = self.query_one("#change-team-btn", Button)
         if not c.state:
             panel.update("")
+            team_btn.display = False
             return
+        lobby = c.state["phase"] == "lobby"
+        team_btn.display = lobby and c.state.get("num_teams", 0) > 1
         lines = ["[b]Players:[/b]"]
         for pid_str, p in sorted(c.state["players"].items(), key=lambda kv: int(kv[0])):
-            safe_count = sum(
-                1 for peg in c.state["pegs"]
-                if peg["owner"] == int(pid_str) and peg["location"][0] == "safe"
-            )
             you = " (you)" if int(pid_str) == c.player_id else ""
             marker = ">" if c.state.get("turn_player") == int(pid_str) else " "
             style = colors.player_style(p["color"])
             if not p.get("connected", True):
                 style = colors.DIM_STYLE
-            lines.append(f"[{style}]{marker}{p['name']}{you} [{safe_count}/5 safe][/{style}]")
+            if lobby:
+                team = p.get("team")
+                suffix = f" [Team {team + 1}]" if team is not None and c.state.get("num_teams", 0) > 1 else ""
+                lines.append(f"[{style}]{marker}{p['name']}{you}{suffix}[/{style}]")
+            else:
+                safe_count = sum(
+                    1 for peg in c.state["pegs"]
+                    if peg["owner"] == int(pid_str) and peg["location"][0] == "safe"
+                )
+                lines.append(f"[{style}]{marker}{p['name']}{you} [{safe_count}/5 safe][/{style}]")
         panel.update("\n".join(lines))
 
     async def _refresh_hand(self) -> None:
@@ -247,6 +279,8 @@ class GameScreen(Screen):
             self.controller.cancel_selection()
         elif bid == "discard-btn":
             self.controller.try_discard()
+        elif bid == "change-team-btn":
+            self.controller.cycle_team()
         else:
             return
         await self.refresh_all()
@@ -272,6 +306,12 @@ class GameScreen(Screen):
         if self.focused is not None and self.focused.id == "chat_input":
             return
         self.controller.cancel_selection()
+        await self.refresh_all()
+
+    async def action_change_team(self) -> None:
+        if self.focused is not None and self.focused.id == "chat_input":
+            return
+        self.controller.cycle_team()
         await self.refresh_all()
 
     async def action_discard(self) -> None:

@@ -142,6 +142,8 @@ class GameServer:
             self._on_submit_move(conn, msg)
         elif mtype == "forced_discard":
             self._on_forced_discard(conn, msg)
+        elif mtype == "cycle_team":
+            self._on_cycle_team(conn, msg)
 
     def _on_disconnect(self, conn_id):
         with self._conn_lock:
@@ -212,6 +214,10 @@ class GameServer:
             if len(self.state.players) < self.num_players:
                 self._send_system(conn.player_id, "Waiting for more players before you can begin.")
                 return
+            if not self.state.teams_balanced():
+                self.state.lobby_error = "UNBALANCED TEAMS. GAME CANNOT BEGIN."
+                self._broadcast_state()
+                return
             self.state.start_game()
             self._broadcast({"type": "system_msg", "text": "The game has begun!"})
             self._broadcast_state()
@@ -227,6 +233,12 @@ class GameServer:
             self.state.phase = GameState.PHASE_FINISHED
             self._broadcast({"type": "system_msg", "text": "Host ended the game."})
             self._broadcast_state()
+
+    def _on_cycle_team(self, conn: Connection, msg):
+        if conn.player_id is None or self.state.phase != GameState.PHASE_LOBBY:
+            return
+        self.state.cycle_team(conn.player_id)
+        self._broadcast_state()
 
     def _require_turn(self, conn: Connection):
         if conn.player_id is None:
@@ -276,11 +288,11 @@ class GameServer:
         if drawn is not None:
             player.hand.append(drawn)
 
-        mate = self.board.teammate(conn.player_id)
+        mate = self.state.teammate(conn.player_id)
         members = [conn.player_id] if mate is None else [conn.player_id, mate]
         if any(self.state.team_all_safe(m) for m in members):
             self.state.phase = GameState.PHASE_FINISHED
-            self.state.winner_team = self.board.team_id(conn.player_id)
+            self.state.winner_team = self.state.team_id(conn.player_id)
             self._broadcast({"type": "game_over", "winner_team": self.state.winner_team,
                               "winner_name": player.name})
             self._broadcast({"type": "system_msg", "text": f"{player.name}'s team wins!"})

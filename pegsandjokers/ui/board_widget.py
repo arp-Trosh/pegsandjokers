@@ -30,6 +30,13 @@ class BoardView(ScrollView):
 
     def __init__(self, board_layout, **kwargs):
         super().__init__(**kwargs)
+        self.set_layout(board_layout)
+
+    def set_layout(self, board_layout) -> None:
+        """(Re)plant the whole board on a new Layout -- used at startup, and
+        again once teams are finalized and the server reseats players so
+        teammates sit opposite each other, since that reshuffles which arm
+        of the board each player's home/safe/track holes are drawn on."""
         # Named board_layout, not layout -- Widget already reserves that name.
         self.board_layout = board_layout
         self.virtual_size = Size(board_layout.width, board_layout.height)
@@ -43,6 +50,7 @@ class BoardView(ScrollView):
         # "." spaces light up in random player colors without re-rolling
         # (and thus flickering) on every redraw.
         self._win_colors = {}
+        self.refresh()
 
     def update_from_controller(self, controller):
         highlight = controller.current_highlight()

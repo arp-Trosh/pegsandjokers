@@ -56,19 +56,22 @@ class Board:
                 return p
         return None
 
-    def teammate(self, player):
-        """Return the teammate's player index, or None (2-player / no teams)."""
-        if self.num_players == 2:
-            return None
-        seat = self.seat(player)
-        partner_seat = (seat + self.slots // 2) % self.slots
-        return self.player_at_seat(partner_seat)
+    def reseat(self, seat_of_player):
+        """Replace the seat assignment (e.g. once teams are finalized and
+        the game starts, so teammates end up sitting opposite each other).
+        `seat_of_player` must still be a permutation of 0..slots-1, indexed
+        by player_id."""
+        self.seat_of_player = list(seat_of_player)
 
-    def team_id(self, player):
-        mate = self.teammate(player)
-        if mate is None:
-            return player
-        return min(player, mate)
+    def default_team(self, player):
+        """Seat-opposite team index (0..num_players//2 - 1), or None for a
+        2-player game (no teams). This is only the starting-lobby default --
+        GameState.teammate()/team_id() are authoritative once players are
+        free to pick their own team, since a chosen team need not match
+        seat-opposite pairing."""
+        if self.num_players < 4:
+            return None
+        return self.seat(player) % (self.slots // 2)
 
     # -- main track --------------------------------------------------------
     # COME OUT SPOT (hole #9 of this seat's own 18-hole arm) sits well past

@@ -38,13 +38,14 @@ class Peg:
 
 
 class Player:
-    def __init__(self, player_id, name, color, connection_id=None):
+    def __init__(self, player_id, name, color, connection_id=None, team=None):
         self.player_id = player_id
         self.name = name
         self.color = color
         self.connection_id = connection_id
         self.hand = []
         self.connected = True
+        self.team = team
 
     def to_dict(self, reveal_hand=False):
         return {
@@ -52,6 +53,7 @@ class Player:
             "name": self.name,
             "color": self.color,
             "connected": self.connected,
+            "team": self.team,
             "hand_count": len(self.hand),
             "hand": [c.to_dict() for c in self.hand] if reveal_hand else None,
         }
@@ -73,6 +75,7 @@ class GameState:
         self.phase = GameState.PHASE_LOBBY
         self.turn_player = None
         self.winner_team = None
+        self.lobby_error = None  # transient message shown to everyone in the lobby, e.g. unbalanced teams
         self.log = []  # list of (kind, text) system/chat log entries kept server-side
 
         for p in range(num_players):
@@ -80,19 +83,85 @@ class GameState:
                 self.pegs[(p, i)] = Peg(p, i)
 
     # -- setup -------------------------------------------------------------
+    @property
+    def num_teams(self):
+        return self.num_players // 2
+
     def add_player(self, player_id, name, color, connection_id=None):
-        self.players[player_id] = Player(player_id, name, color, connection_id)
+        team = self.board.default_team(player_id)
+        self.players[player_id] = Player(player_id, name, color, connection_id, team=team)
+
+    def set_team(self, player_id, team):
+        """Player-chosen team change, only while still in the lobby."""
+        if self.phase != GameState.PHASE_LOBBY or self.num_players < 4:
+            return
+        if not (0 <= team < self.num_teams):
+            return
+        self.players[player_id].team = team
+        self.lobby_error = None
+
+    def cycle_team(self, player_id):
+        if self.phase != GameState.PHASE_LOBBY or self.num_players < 4:
+            return
+        p = self.players[player_id]
+        self.set_team(player_id, (p.team + 1) % self.num_teams)
+
+    def teams_balanced(self):
+        """Every team must have exactly two members -- the rules only ever
+        deal with a single teammate per player. Not meaningful (and always
+        true) for a 2-player game, which has no teams at all."""
+        if self.num_players < 4:
+            return True
+        counts = {}
+        for p in self.players.values():
+            counts[p.team] = counts.get(p.team, 0) + 1
+        return len(counts) == self.num_teams and all(c == 2 for c in counts.values())
+
+    def teammate(self, player):
+        """Return the player_id of `player`'s teammate, or None (2-player
+        game, or -- only possible mid-lobby -- no other player has chosen
+        the same team yet)."""
+        if self.num_players < 4:
+            return None
+        team = self.players[player].team
+        return next((pid for pid, p in self.players.items() if pid != player and p.team == team), None)
+
+    def team_id(self, player):
+        return self.players[player].team
+
+    def _team_seating(self):
+        """Seat assignment (indexed by player_id) that puts each team's two
+        members at opposite seats, since players choose teams freely in the
+        lobby and are no longer guaranteed to already be seated that way."""
+        half = self.board.slots // 2
+        by_team = {}
+        for pid, p in self.players.items():
+            by_team.setdefault(p.team, []).append(pid)
+        seat_of_player = [0] * self.num_players
+        for team, members in by_team.items():
+            for offset, pid in enumerate(sorted(members)):
+                seat_of_player[pid] = team + offset * half
+        return seat_of_player
+
+    def _turn_order(self):
+        """Player order to take turns in, going around the table by seat
+        (not join order) so turns alternate between opposing teams instead
+        of possibly landing on the same team twice in a row."""
+        return sorted(self.players.keys(), key=self.board.seat)
 
     def start_game(self):
+        if self.num_players >= 4:
+            self.board.reseat(self._team_seating())
         self.shoe = build_shoe(self.num_players, rng=self.rng)
         self.discard = []
-        order = sorted(self.players.keys())
+        order = self._turn_order()
         for pid in order:
             player = self.players[pid]
             player.hand = [self.shoe.pop() for _ in range(HAND_SIZE)]
         self.phase = GameState.PHASE_PLAYING
         self.turn_player = order[0]
         self.winner_team = None
+        self.lobby_error = None
 
     def draw_card(self):
         if not self.shoe:
@@ -145,7 +214,7 @@ class GameState:
         peg.location = ("home", peg.owner, slot)
 
     def team_all_safe(self, player):
-        mate = self.board.teammate(player)
+        mate = self.teammate(player)
         members = [player] if mate is None else [player, mate]
         for m in members:
             for peg in self.pegs_of(m):
@@ -154,7 +223,7 @@ class GameState:
         return True
 
     def next_turn(self):
-        order = sorted(self.players.keys())
+        order = self._turn_order()
         i = order.index(self.turn_player)
         self.turn_player = order[(i + 1) % len(order)]
 
@@ -165,6 +234,9 @@ class GameState:
             "phase": self.phase,
             "turn_player": self.turn_player,
             "winner_team": self.winner_team,
+            "lobby_error": self.lobby_error,
+            "num_teams": self.num_teams,
+            "seat_of_player": list(self.board.seat_of_player),
             "shoe_count": len(self.shoe),
             "discard_top": self.discard[-1].to_dict() if self.discard else None,
             "players": {
