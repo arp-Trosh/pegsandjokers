@@ -1,36 +1,83 @@
 """The Host/Join screen shown when the app starts."""
-import random
 import time
 
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.geometry import Spacing
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Input, RadioButton, RadioSet, Select, Static
+from textual.widgets import (
+    Button,
+    Footer,
+    Input,
+    RadioButton,
+    RadioSet,
+    Select,
+    Static,
+    Switch,
+)
 
 from . import colors
 from ..game.state import COLORS
 from ..net.client import ClientConnection
 from ..net.server import GameServer
+from .sparkles import DEFAULT_SPEED, JokerSparkles, SliderMeter
 
 DEFAULT_PORT = 5555
 TITLE_TEXT = "Pegs and Jokers"
-
-
-def _random_title_markup() -> str:
-    return "".join(
-        f"[{colors.player_style(random.choice(COLORS))}]{ch}[/]" if ch != " " else " "
-        for ch in TITLE_TEXT
-    )
+SLIDER_LABELS = ("Joker", "Smile", "Whimsy")
 
 
 class ConnectScreen(Screen):
     CSS = """
     ConnectScreen {
         align: center middle;
+        layers: background foreground;
+    }
+    JokerSparkles {
+        layer: background;
     }
     #page {
+        layer: foreground;
         width: auto;
         height: auto;
+    }
+    #bottom_bar {
+        layer: foreground;
+        dock: bottom;
+        height: auto;
+    }
+    #row_direction {
+        height: 1;
+        align: left middle;
+    }
+    #row_direction.wrapped {
+        layout: vertical;
+        height: auto;
+    }
+    #row_direction > SliderMeter {
+        width: auto;
+    }
+    #direction_x {
+        padding: 0 0 0 2;
+    }
+    #direction_y {
+        padding: 0;
+        margin-left: 1;
+    }
+    #row_direction > Switch {
+        border: none;
+        padding: 0;
+        height: 1;
+        margin-left: 1;
+    }
+    #row_direction > .switch-label {
+        width: auto;
+        margin-left: 1;
+        color: $text-muted;
+    }
+    #row_direction.wrapped > * {
+        margin-left: 0;
     }
     #title {
         width: 100%;
@@ -68,8 +115,9 @@ class ConnectScreen(Screen):
     """
 
     def compose(self) -> ComposeResult:
+        yield JokerSparkles(id="sparkles")
         with Vertical(id="page"):
-            yield Static(_random_title_markup(), id="title")
+            yield Static(colors.random_colored_markup(TITLE_TEXT), id="title")
             with Vertical(id="form"):
                 with Horizontal(classes="row"):
                     yield Static("Mode", classes="label")
@@ -119,10 +167,79 @@ class ConnectScreen(Screen):
 
                 yield Static("", id="status")
                 yield Button("Connect", variant="primary", id="connect", compact=True)
-        yield Footer()
+        with Vertical(id="bottom_bar"):
+            label_width = max(len(label) for label in SLIDER_LABELS)
+            yield SliderMeter(
+                SLIDER_LABELS[0], value=5.0, label_width=label_width, id="intensity"
+            )
+            yield SliderMeter(
+                SLIDER_LABELS[1], value=DEFAULT_SPEED, label_width=label_width, id="speed"
+            )
+            with Horizontal(id="row_direction"):
+                yield SliderMeter(
+                    SLIDER_LABELS[2], value=50.0, label_width=label_width, id="direction_x"
+                )
+                yield SliderMeter("", value=50.0, id="direction_y")
+                yield Switch(value=False, id="direction_enabled")
+                yield Static("On/Off", classes="switch-label")
+            yield Footer()
 
     def on_mount(self) -> None:
         self._update_field_visibility()
+        sparkles = self.query_one("#sparkles", JokerSparkles)
+        sparkles.intensity = self.query_one("#intensity", SliderMeter).value
+        sparkles.speed = self.query_one("#speed", SliderMeter).value
+        sparkles.direction_x = self.query_one("#direction_x", SliderMeter).value
+        sparkles.direction_y = self.query_one("#direction_y", SliderMeter).value
+        sparkles.direction_enabled = self.query_one("#direction_enabled", Switch).value
+        self.call_after_refresh(self._update_direction_wrap)
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._update_direction_wrap()
+
+    def _update_direction_wrap(self) -> None:
+        """Stack the Whimsy row's controls onto separate lines once the
+        terminal is too narrow to fit them side by side."""
+        row = self.query_one("#row_direction", Horizontal)
+        children = list(row.children)
+        if not children:
+            return
+        gaps = len(children) - 1
+        needed = sum(child.outer_size.width for child in children) + gaps
+        wrapped = needed > row.size.width
+        row.set_class(wrapped, "wrapped")
+
+        dx = self.query_one("#direction_x", SliderMeter)
+        dy = self.query_one("#direction_y", SliderMeter)
+        switch = self.query_one("#direction_enabled", Switch)
+        label = self.query_one(".switch-label", Static)
+        if wrapped:
+            # Line up the 2nd bar, the switch, and its label under the "["
+            # of the 1st (labeled) bar, rather than the row's left edge.
+            bracket_col = dx.styles.padding.left + dx.label.index("[")
+            dy_col = max(0, bracket_col - dy.styles.padding.left - dy.label.index("["))
+            dy.styles.margin = Spacing(0, 0, 0, dy_col)
+            switch.styles.margin = Spacing(0, 0, 0, bracket_col)
+            label.styles.margin = Spacing(0, 0, 0, bracket_col)
+        else:
+            dy.styles.clear_rule("margin")
+            switch.styles.clear_rule("margin")
+            label.styles.clear_rule("margin")
+
+    def on_slider_meter_changed(self, event: SliderMeter.Changed) -> None:
+        sparkles = self.query_one("#sparkles", JokerSparkles)
+        if event.slider.id == "intensity":
+            sparkles.intensity = event.value
+        elif event.slider.id == "speed":
+            sparkles.speed = event.value
+        elif event.slider.id == "direction_x":
+            sparkles.direction_x = event.value
+        elif event.slider.id == "direction_y":
+            sparkles.direction_y = event.value
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        if event.switch.id == "direction_enabled":
+            self.query_one("#sparkles", JokerSparkles).direction_enabled = event.value
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._update_field_visibility()
