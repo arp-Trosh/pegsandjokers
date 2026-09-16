@@ -13,3 +13,9 @@ venv/
 # Editor / OS cruft
 .DS_Store
 *.swp
+
+# Downloaded build artifacts
+dist_windows/
+build/
+dist/
+*.spec
