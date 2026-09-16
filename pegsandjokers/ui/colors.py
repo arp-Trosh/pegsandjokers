@@ -14,6 +14,7 @@ board/chat. Hex codes skip that remap and resolve identically everywhere,
 which is why "orange" (already hacked to the hex-backed 256-color name
 "dark_orange") was the one color that never showed this bug.
 """
+import random
 
 PLAYER_STYLES = {
     "red": "#ff5555",
@@ -29,6 +30,26 @@ PLAYER_STYLES = {
 
 def player_style(color_name):
     return PLAYER_STYLES.get(color_name, PLAYER_STYLES["white"])
+
+
+def random_colored_markup(text):
+    """Wrap each non-space character of `text` in a random player color.
+
+    Same effect as the main menu's "Pegs and Jokers" title -- reused
+    wherever else that same playful per-character coloring is wanted.
+    """
+    names = list(PLAYER_STYLES)
+
+    def markup_char(ch):
+        if ch == " ":
+            return " "
+        # A literal "[" is otherwise indistinguishable from the start of a
+        # markup tag to Textual's parser, so it must be escaped -- "]" needs
+        # no such treatment since it's only special *inside* an open tag.
+        escaped = "\\[" if ch == "[" else ch
+        return f"[{player_style(random.choice(names))}]{escaped}[/]"
+
+    return "".join(markup_char(ch) for ch in text)
 
 
 # Also cross-rendered on both the board (Style.parse) and the players panel

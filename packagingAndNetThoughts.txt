@@ -1,0 +1,19 @@
+For sharing this with friends over the internet, there are two separate concerns: getting them the code, and getting the network connection to actually work across the internet.
+
+**Packaging the code**
+
+The project is a pip-installable Python package (it has `pegsandjokers/__main__.py` and runs via `python -m pegsandjokers`, and uses Textual for the UI). Reasonable options, roughly in order of effort:
+
+- Simplest: have friends clone/download the repo, create a venv, `pip install textual` (and whatever else is in the dependency list), and run `python -m pegsandjokers`. Fine if your friends are comfortable with a terminal.
+- A bit more polished: add a `pyproject.toml`/`setup.py` with an entry point so it installs as a `pegsandjokers` command via `pip install .` or `pipx install .` — pipx is nice here since it isolates the venv for you.
+- Most turnkey: build standalone executables with something like PyInstaller for Windows/Mac/Linux so friends don't need Python installed at all. More work to set up and maintain per-platform builds.
+
+**Playing over the internet**
+
+This is the part that usually trips people up, since the game is a plain TCP client/server (see `net/server.py` / `net/client.py`) with no built-in relay or NAT traversal:
+
+- Whoever hosts needs the port (default 5555) reachable from outside their LAN — either port-forward it on their router, or use something like a Tailscale/ZeroTier VPN so everyone's on a virtual LAN and you connect via that private IP instead of dealing with port forwarding at all (this is usually the easiest path for a small friend group and avoids exposing a raw socket to the open internet).
+- The protocol (`net/protocol.py`) is unauthenticated newline-delimited JSON with no encryption, so exposing it directly to the internet isn't great from a security standpoint — a VPN approach sidesteps that too, since only people on your virtual network can reach the port at all.
+- If you do port-forward directly, the host would give friends their public IP and the port; nothing in the code currently supports a relay/matchmaking server, so it's always "host shares an address, others connect to it" — there's no lobby-discovery service.
+
+If you want, this is worth a proper look in the main conversation (packaging setup, and/or adding lightweight auth or wrapping the socket in TLS before exposing it publicly) — happy to dig into either once the current work wraps up.

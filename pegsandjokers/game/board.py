@@ -105,28 +105,33 @@ class Board:
 # ---------------------------------------------------------------------------
 # Visual layout
 # ---------------------------------------------------------------------------
-# HOME and SAFE cluster shapes, matching the official rules diagram: HOME is
-# a diamond (4 corners + center), SAFE is an "L" (3 in a row, then 2 more
-# extending from one end of that row). Offsets are (along, perp) pairs in
-# units of one hole-spacing, relative to the arm's own COME OUT SPOT (for
-# HOME) or IN SPOT (for SAFE):
+# HOME cluster shape: a diamond (4 corners + center), placed via
+# Layout._place() below using (along, perp) offset pairs in units of one
+# hole-spacing, relative to the arm's own COME OUT SPOT:
 #   along: +1 = one hole further in the forward/clockwise direction
 #          (toward higher hole numbers on this arm), -1 = one hole back.
-#   perp:  +1 = one hole further outward, away from the main track.
-# This keeps both shapes correctly oriented no matter which side of the
+#   perp:  +1 = one hole further inward, toward the polygon's interior
+#          (where HOME/SAFE are drawn, keeping the board compact) --
+#          _place() below flips this to outward if ever needed.
+# This keeps the diamond correctly oriented no matter which side of the
 # rectangle/hexagon/octagon the arm falls on, since (along, perp) is
 # defined relative to the arm's own direction rather than the screen's.
-HOME_OFFSETS = [(0, 2), (-1, 1), (1, 1), (-1, 3), (1, 3)]
-# SAFE's "L": a tail running straight outward from IN SPOT (along=0, so it
-# lines up with IN SPOT's own hole exactly instead of a neighboring one),
-# then a corner and a row of 3 extending toward HOME.
 #
-# List order matters here: this list is indexed directly by SAFE slot
-# number (0 = just off the main track, 4 = the final resting spot deep in
-# the SAFE area -- see game/rules.py), so it must trace the actual path a
-# peg walks: starting at the tail's near end (right next to IN SPOT),
-# up the tail, round the corner, and out along the row to its far tip.
-SAFE_OFFSETS = [(0, 1), (0, 2), (0, 3), (1, 3), (2, 3)]
+# Shifted 1 hole-unit toward IN SPOT (all `along` values -1 from a
+# centered diamond) so the HOME diamond and the SAFE line (below) sit
+# close together on the arm instead of spread apart at opposite ends of
+# it.
+HOME_OFFSETS = [(-1, 2), (-2, 1), (0, 1), (-2, 3), (0, 3)]
+# SAFE cluster: a straight line of SAFE_COUNT holes running perpendicular
+# to the main track, directly off IN SPOT, extending straight into the
+# polygon's interior. Unlike HOME, this is placed via
+# Layout._place_radial_line() rather than a list of (along, perp)
+# offsets -- a diagonal hexagon/octagon arm's continuous outward
+# direction doesn't round to a constant number of grid columns/rows per
+# step (it staggers, e.g. 2,3,3,2,...), which independent per-point
+# rounding would render as a bent, unevenly spaced line. Rounding a
+# single per-step vector once and repeating it guarantees a straight,
+# uniformly spaced line instead -- see _place_radial_line() for how.
 
 # One hole's worth of distance in the abstract layout space used to build
 # the polygon (see Layout._build). Kept at 1.0 for simplicity; ROW_SCALE and
@@ -234,16 +239,55 @@ class Layout:
             def _place(cluster, anchor_xy, offsets):
                 ax, ay = anchor_xy
                 for i, (along, perp) in enumerate(offsets):
-                    perp *= perp_boost
+                    # Negate perp: offsets are authored as "outward" for
+                    # readability, but HOME/SAFE are drawn inward (toward
+                    # the polygon's interior) to keep the board compact.
+                    perp *= -perp_boost
                     x = ax + along * hole_spacing * along_x + perp * hole_spacing * out_x
                     y = ay + along * hole_spacing * along_y + perp * hole_spacing * out_y
                     self.positions[(cluster, player, i)] = self._to_grid(x, y)
 
+            def _place_radial_line(cluster, anchor_xy, count):
+                """Like _place, but for a pure perp=1..count radial line
+                (SAFE's shape): rounds each point independently the way
+                _place does, on a diagonal hexagon/octagon arm the
+                continuous per-step delta (e.g. 2.66 grid columns) doesn't
+                round to a constant number of columns every step -- it
+                staggers 2,3,3,2,... -- which reads as a bent, unevenly
+                spaced line instead of a straight one. Rounding a single
+                per-step (row, col) vector ONCE and then repeating that
+                same integer step for every point guarantees uniform
+                spacing and a straight line by construction, at the cost
+                of the line's on-screen angle being the nearest reachable
+                integer-step approximation of the true geometric outward
+                direction rather than that exact direction.
+                """
+                ax, ay = anchor_xy
+                raw_dx = -perp_boost * hole_spacing * out_x
+                raw_dy = -perp_boost * hole_spacing * out_y
+                dr = round(raw_dy * ROW_SCALE)
+                dc = round(raw_dx * COL_SCALE)
+                if dr == 0 and dc == 0:
+                    # Degenerate only if hole_spacing/perp_boost is near
+                    # zero, which doesn't happen in practice -- but fall
+                    # back to a visible step along whichever axis is
+                    # dominant rather than stacking every point on the
+                    # anchor cell.
+                    if abs(raw_dy * ROW_SCALE) >= abs(raw_dx * COL_SCALE):
+                        dr = 1 if raw_dy >= 0 else -1
+                    else:
+                        dc = 1 if raw_dx >= 0 else -1
+                base_row, base_col = self._to_grid(ax, ay)
+                for i in range(count):
+                    step = i + 1
+                    self.positions[(cluster, player, i)] = (base_row + dr * step, base_col + dc * step)
+
             # Home cluster: anchored on the COME OUT SPOT hole itself, then
             # offset outward/along from there (see HOME_OFFSETS comment).
             _place("home", hole_xy[COME_OUT_LOCAL_INDEX], HOME_OFFSETS)
-            # Safe cluster: anchored on the IN SPOT hole itself.
-            _place("safe", hole_xy[IN_SPOT_LOCAL_INDEX], SAFE_OFFSETS)
+            # Safe cluster: anchored on the IN SPOT hole itself, running
+            # straight inward from there (see SAFE_COUNT comment above).
+            _place_radial_line("safe", hole_xy[IN_SPOT_LOCAL_INDEX], SAFE_COUNT)
 
         self._deconflict()
 

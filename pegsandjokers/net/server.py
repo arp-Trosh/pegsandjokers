@@ -275,13 +275,21 @@ class GameServer:
             return
         card = player.hand[idx]
         legal = rules.legal_moves_for_card(self.state, self.board, conn.player_id, card, idx)
-        if not _move_in(move, legal):
+        canonical_move = _find_legal_move(move, legal)
+        if canonical_move is None:
             self._send_system(conn.player_id, "Invalid move.")
             return
+        move = canonical_move
 
+        status_msg = rules.describe_move(self.state, player.name, card, move)
         messages = rules.apply_move(self.state, self.board, move)
-        for m in messages:
-            self._broadcast({"type": "system_msg", "text": m})
+        self._broadcast({"type": "system_msg", "text": status_msg})
+        # The "got JOKERED!" line above already covers the capture for a
+        # Joker wild swap -- skip apply_move's own generic capture message
+        # so it isn't reported twice.
+        if move["label"] != "Joker: wild swap":
+            for m in messages:
+                self._broadcast({"type": "system_msg", "text": m})
         played = player.hand.pop(idx)
         self.state.discard.append(played)
         drawn = self.state.draw_card()
@@ -320,7 +328,10 @@ class GameServer:
         self._broadcast_state()
 
 
-def _move_in(move, legal_moves):
+def _find_legal_move(move, legal_moves):
+    """Return the server-computed legal move matching the client's
+    submission (matched on card/peg/destination only -- the client's copy
+    of a move is otherwise untrusted), or None if it doesn't match any."""
     for m in legal_moves:
         if m["card_index"] != move.get("card_index"):
             continue
@@ -332,5 +343,5 @@ def _move_in(move, legal_moves):
                 ok = False
                 break
         if ok:
-            return True
-    return False
+            return m
+    return None

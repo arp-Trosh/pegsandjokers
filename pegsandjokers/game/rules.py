@@ -325,3 +325,43 @@ def apply_move(state, board, move):
 
 def _partner_in_spot_location(board, owner):
     return ("track", board.in_spot(owner))
+
+
+def describe_move(state, player_name, card, move):
+    """Human-readable status line for the chat log describing a just-played
+    move, e.g. "Adam played 10 of Hearts, moved 10 spaces forward." or
+    "Adam played JOKER. Amanda got JOKERED!"
+
+    Reads off `move["label"]` (set alongside each move by
+    legal_moves_for_card et al.) to identify which of the fixed set of move
+    shapes was played, rather than re-deriving distances from board
+    geometry -- that would have to re-implement the SAFE-area branching a
+    second time, whereas the label already unambiguously encodes it.
+    """
+    label = move["label"]
+    card_text = "JOKER" if card.is_joker else card.label().replace(" ", " of ", 1)
+
+    if label == "Joker: wild swap":
+        target_owner, _ = move["steps"][0]["capture"]
+        target_name = state.players[target_owner].name
+        return f"{player_name} played JOKER. {target_name} got JOKERED!"
+
+    played = f"{player_name} played {card_text}"
+
+    if label.endswith(": come out"):
+        return f"{played}, came out of HOME."
+    if label.startswith("Move back "):
+        n = label.rsplit(" ", 1)[-1]
+        return f"{played}, moved {n} spaces back."
+    if label.startswith("Split 7: "):
+        amt_a, amt_b = label.split(": ", 1)[1].split("/")
+        return f"{played}, moved {amt_a} and {amt_b} spaces forward."
+    if label.startswith("Split 9: "):
+        forward_part, back_part = label.split(": ", 1)[1].split(" / ")
+        f = forward_part.rsplit(" ", 1)[-1]
+        b = back_part.rsplit(" ", 1)[-1]
+        return f"{played}, moved {f} spaces forward and {b} spaces backwards."
+    if label.startswith("Move "):
+        n = label.rsplit(" ", 1)[-1]
+        return f"{played}, moved {n} spaces forward."
+    return f"{played}."

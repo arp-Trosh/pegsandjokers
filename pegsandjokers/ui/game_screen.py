@@ -69,15 +69,18 @@ class GameScreen(Screen):
         border: none;
         padding: 0 1;
     }
+    #begin-game-btn {
+        height: 1;
+        min-width: 3;
+        border: none;
+        padding: 0 1;
+    }
     #hand_row {
         height: auto;
         align: left middle;
     }
     #hand_row Button {
         margin-right: 1;
-        min-width: 3;
-    }
-    #cancel-btn, #discard-btn {
         min-width: 3;
         height: 1;
         border: none;
@@ -119,11 +122,12 @@ class GameScreen(Screen):
         yield BoardView(self.board_layout, id="board")
         with Horizontal(id="lower"):
             with Vertical(id="chat_col"):
-                yield RichLog(id="chat_log", markup=True, wrap=True)
+                yield RichLog(id="chat_log", markup=True, wrap=True, min_width=0)
                 yield Input(placeholder="Type a message, or /rules  (Enter to send)",
                             id="chat_input", max_length=CHAT_MAX_LEN)
             with Vertical(id="players_col"):
                 yield Static(id="players_panel")
+                yield Button("Begin Game (b)", id="begin-game-btn")
                 yield Button("Change Team (t)", id="change-team-btn")
         with Horizontal(id="hand_row"):
             pass
@@ -211,12 +215,15 @@ class GameScreen(Screen):
         c = self.controller
         panel = self.query_one("#players_panel", Static)
         team_btn = self.query_one("#change-team-btn", Button)
+        begin_btn = self.query_one("#begin-game-btn", Button)
         if not c.state:
             panel.update("")
             team_btn.display = False
+            begin_btn.display = False
             return
         lobby = c.state["phase"] == "lobby"
         team_btn.display = lobby and c.state.get("num_teams", 0) > 1
+        begin_btn.display = lobby and c.is_host
         lines = ["[b]Players:[/b]"]
         for pid_str, p in sorted(c.state["players"].items(), key=lambda kv: int(kv[0])):
             you = " (you)" if int(pid_str) == c.player_id else ""
@@ -247,8 +254,8 @@ class GameScreen(Screen):
                 label = f"{i + 1}:{c.short()}"
                 btn = Button(label, id=f"card-{i}", variant="primary" if self.controller.card_idx == i else "default")
                 widgets.append(btn)
-            widgets.append(Button("Cancel", id="cancel-btn"))
-            widgets.append(Button("Discard", id="discard-btn"))
+            widgets.append(Button("Cancel (c)", id="cancel-btn"))
+            widgets.append(Button("Discard (x)", id="discard-btn"))
             if widgets:
                 await row.mount_all(widgets)
 
@@ -281,6 +288,8 @@ class GameScreen(Screen):
             self.controller.try_discard()
         elif bid == "change-team-btn":
             self.controller.cycle_team()
+        elif bid == "begin-game-btn":
+            self.action_host_begin()
         else:
             return
         await self.refresh_all()
