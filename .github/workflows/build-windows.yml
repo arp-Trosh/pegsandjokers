@@ -22,9 +22,9 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --onefile --name PegsAndJokers --console scripts/run.py
+          pyinstaller --onedir --noupx --name PegsAndJokers --console scripts/run.py
 
       - uses: actions/upload-artifact@v4
         with:
           name: PegsAndJokers-windows
-          path: dist/PegsAndJokers.exe
+          path: dist/PegsAndJokers
