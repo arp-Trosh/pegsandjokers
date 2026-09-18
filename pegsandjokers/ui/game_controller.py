@@ -7,6 +7,7 @@ imports Textual (or curses) -- it only deals in plain data (space-id
 tuples, card indices, dicts from the wire protocol), so it can be unit
 tested on its own and is exactly as reusable as game/ and net/ already are.
 """
+from ..game.board import ARM_LEN
 
 
 def _loceq(a, b):
@@ -214,3 +215,22 @@ class GameController:
                 p = self.state["players"].get(str(peg["owner"]))
                 return p["color"] if p else None
         return None
+
+    def owner_color(self, space_id):
+        """Color of the player whose row/cluster a space belongs to,
+        regardless of whether it's currently occupied by a peg -- used to
+        tint a player's empty HOME/SAFE/track holes to match their color as
+        soon as they take a seat, instead of leaving them the generic
+        default until a peg actually lands there."""
+        if self.state is None:
+            return None
+        kind = space_id[0]
+        if kind == "track":
+            seat = space_id[1] // ARM_LEN
+            owner = self.board.player_at_seat(seat)
+        else:
+            owner = space_id[1]
+        if owner is None:
+            return None
+        p = self.state["players"].get(str(owner))
+        return p["color"] if p else None

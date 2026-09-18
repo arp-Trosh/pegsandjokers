@@ -106,7 +106,7 @@ class GameScreen(Screen):
     def __init__(self, conn, name, color, num_players, player_id, is_host):
         super().__init__()
         self.controller = GameController(conn, name, color, num_players, player_id, is_host, Board(num_players))
-        self.board_layout = Layout(self.controller.board)
+        self.board_layout = Layout(self.controller.board, viewer_seat=self.controller.board.seat(player_id))
         self._chat_written = 0
         # refresh_all() is called from several independent entry points --
         # the 0.1s network poll, plus button/click/input event handlers --
@@ -145,7 +145,8 @@ class GameScreen(Screen):
         self._refresh_status()
         board_view = self.query_one(BoardView)
         if self.controller.consume_seating_changed():
-            self.board_layout = Layout(self.controller.board)
+            viewer_seat = self.controller.board.seat(self.controller.player_id)
+            self.board_layout = Layout(self.controller.board, viewer_seat=viewer_seat)
             board_view.set_layout(self.board_layout)
         board_view.update_from_controller(self.controller)
         self._refresh_chat()

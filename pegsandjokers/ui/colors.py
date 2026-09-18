@@ -32,6 +32,27 @@ def player_style(color_name):
     return PLAYER_STYLES.get(color_name, PLAYER_STYLES["white"])
 
 
+def owner_track_style(owner_color):
+    """Style for an empty main-track hole. Stays the generic dim grey
+    until a player has actually taken that seat, then switches to a
+    dimmed version of that seat's player color so each player's 18-hole
+    row reads as theirs before any peg has reached it -- "dim" (rather
+    than the full-brightness color used for an occupied peg) keeps an
+    empty hole visually distinct from one with a peg sitting on it."""
+    if owner_color is None:
+        return DIM_STYLE
+    return f"dim {player_style(owner_color)}"
+
+
+def owner_home_safe_style(owner_color):
+    """Style for an empty HOME/SAFE hole. Stays the generic reversed grey
+    block until a player has taken that seat, then reverses to that
+    player's own color."""
+    if owner_color is None:
+        return HOME_SAFE_STYLE
+    return f"reverse {player_style(owner_color)}"
+
+
 def random_colored_markup(text):
     """Wrap each non-space character of `text` in a random player color.
 

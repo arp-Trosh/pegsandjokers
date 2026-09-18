@@ -155,8 +155,15 @@ class Layout:
     can be produced and inspected without a terminal.
     """
 
-    def __init__(self, board: Board):
+    def __init__(self, board: Board, viewer_seat=0):
         self.board = board
+        # Which physical seat is drawn on the bottom edge of the screen
+        # (see _BOTTOM_VERTEX / start_angle in _build) -- defaults to seat
+        # 0 so non-interactive/logical uses (e.g. tests) still get a
+        # stable layout, but each player's own GameScreen passes their own
+        # seat so their row always renders at the bottom of their screen
+        # no matter which physical seat they're actually sitting in.
+        self.viewer_seat = viewer_seat
         self.positions = {}  # space_id -> (row, col)
         self._build()
 
@@ -181,11 +188,25 @@ class Layout:
             y = radius * math.sin(angle)
             verts.append((x, y))
 
+        # Despite the comment above, the seat-0 arm (verts[0] -> verts[1])
+        # actually lands on the LEFT edge, not the bottom -- easily checked
+        # by rendering it. The arm that's actually bottommost is the last
+        # one, verts[slots - 1] -> verts[0]. viewer_seat rotation below
+        # anchors to *that* vertex so a seat mapped there truly renders on
+        # the bottom edge instead of the left one.
+        _BOTTOM_VERTEX = slots - 1
+
         occupied_seats = set(self.board.seat_of_player)
 
         for seat in range(slots):
-            vx, vy = verts[seat]
-            nx, ny = verts[(seat + 1) % slots]
+            # Rotate which vertex this seat's arm is drawn on by
+            # viewer_seat, so the viewer's own seat always lands on
+            # _BOTTOM_VERTEX (the true bottom edge) while every other seat
+            # keeps the same relative order/adjacency around the ring --
+            # just spun to match.
+            vertex = (seat - self.viewer_seat + _BOTTOM_VERTEX) % slots
+            vx, vy = verts[vertex]
+            nx, ny = verts[(vertex + 1) % slots]
             # outward normal direction (points away from the polygon center)
             mx, my = (vx + nx) / 2, (vy + ny) / 2
             norm = math.hypot(mx, my) or 1.0

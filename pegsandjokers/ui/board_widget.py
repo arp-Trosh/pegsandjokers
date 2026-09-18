@@ -82,10 +82,10 @@ class BoardView(ScrollView):
                 style = self._win_colors.get(space_id, colors.DIM_STYLE)
             elif space_id[0] in ("home", "safe"):
                 ch = "."
-                style = colors.HOME_SAFE_STYLE
+                style = colors.owner_home_safe_style(controller.owner_color(space_id))
             else:
                 ch = "."
-                style = colors.DIM_STYLE
+                style = colors.owner_track_style(controller.owner_color(space_id))
             if is_hl:
                 style = colors.HIGHLIGHT_STYLE
                 tag = next(tag_chars, None)
