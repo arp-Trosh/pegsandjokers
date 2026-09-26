@@ -3,7 +3,15 @@ name: Build Windows executable
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  PYINSTALLER_VERSION: "6.22.3"
+  HAS_CERT: ${{ secrets.WINDOWS_CERT_PFX != '' }}
 
 jobs:
   build:
@@ -15,16 +23,68 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install package and PyInstaller
-        run: |
-          pip install .
-          pip install pyinstaller
+      - uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Build executable
+      # PyInstaller's prebuilt bootloader is byte-identical across every app
+      # built with it -- including malware -- so antivirus engines (Windows
+      # Defender especially) flag it. Compiling our own bootloader gives the
+      # .exe a unique signature and avoids most of those false positives.
+      - name: Build PyInstaller with a locally compiled bootloader
         run: |
-          pyinstaller --onedir --noupx --name PegsAndJokers --console scripts/run.py
+          git clone --depth 1 --branch v$env:PYINSTALLER_VERSION https://github.com/pyinstaller/pyinstaller.git $env:RUNNER_TEMP\pyinstaller
+          Push-Location $env:RUNNER_TEMP\pyinstaller\bootloader
+          python ./waf all --target-arch=64bit
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Pop-Location
+          pip install $env:RUNNER_TEMP\pyinstaller
+
+      - name: Install package
+        run: pip install .
+
+      - name: Generate version info
+        run: python scripts/make_version_info.py version_info.txt
+
+      # --onedir: onefile builds unpack to %TEMP% at runtime, a pattern AV
+      #   heuristics associate with droppers.
+      # --noupx: UPX-packed binaries are a strong AV red flag.
+      - name: Build executable
+        run: >
+          pyinstaller --noconfirm --clean --onedir --noupx --console
+          --name PegsAndJokers
+          --version-file version_info.txt
+          scripts/run.py
+
+      # Optional Authenticode signing. Only signing removes the SmartScreen
+      # "unknown publisher" prompt; add WINDOWS_CERT_PFX (base64 .pfx) and
+      # WINDOWS_CERT_PASSWORD repo secrets to enable.
+      - name: Sign executable
+        if: env.HAS_CERT == 'true'
+        env:
+          CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String($env:CERT_PFX))
+          signtool sign /f "$env:RUNNER_TEMP\cert.pfx" /p "$env:CERT_PASSWORD" /fd sha256 /tr http://timestamp.digicert.com /td sha256 dist\PegsAndJokers\PegsAndJokers.exe
+          Remove-Item "$env:RUNNER_TEMP\cert.pfx"
+
+      - name: Package zip and checksum
+        run: |
+          Compress-Archive -Path dist\PegsAndJokers -DestinationPath PegsAndJokers-windows.zip
+          $hash = (Get-FileHash PegsAndJokers-windows.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  PegsAndJokers-windows.zip" | Out-File -Encoding ascii PegsAndJokers-windows.zip.sha256
+          Get-Content PegsAndJokers-windows.zip.sha256
 
       - uses: actions/upload-artifact@v4
         with:
           name: PegsAndJokers-windows
           path: dist/PegsAndJokers
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create $env:GITHUB_REF_NAME
+          PegsAndJokers-windows.zip PegsAndJokers-windows.zip.sha256
+          --title "Pegs and Jokers $env:GITHUB_REF_NAME"
+          --notes "Windows build. Unzip and run PegsAndJokers.exe from inside the extracted PegsAndJokers folder. If SmartScreen shows 'Windows protected your PC', click More info -> Run anyway (the build is not code-signed). SHA-256 checksum is attached."
