@@ -111,3 +111,7 @@ improving the 6- and 8-player board layouts.
 The [GitHub Actions workflow](.github/workflows/build-windows.yml) builds the
 Windows `.exe` with PyInstaller on every push to `main`. Pushing a `v*` tag
 also publishes a GitHub release with the zipped build and a checksum.
+
+---
+
+*Disclaimer: This project was created with Claude Code.*
